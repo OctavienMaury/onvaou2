@@ -311,71 +311,128 @@ function App() {
 
   useEffect(() => {if (isApiConfigured()) fetchStations()}, [fetchStations]);
 
-  // Chercher les lieux culturels
+  // Chercher les lieux culturels avec fallback progressif
   const fetchCulturalPlaces = async (lat, lon) => {
     setLoadingPlaces(true);
+    console.log('🏛️ Recherche lieux culturels pour:', lat, lon);
     
-    const query = `[out:json][timeout:10];(node["tourism"="museum"](around:1500,${lat},${lon});node["amenity"="theatre"](around:1500,${lat},${lon});node["historic"="castle"](around:1500,${lat},${lon}););out;`;
+    // Essayer avec des rayons de plus en plus grands
+    const radii = [2000, 5000, 10000]; // 2km, 5km, 10km
     
-    console.log('Overpass query for:', lat, lon);
-    
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
+    for (const radius of radii) {
+      console.log(`🔍 Tentative avec rayon ${radius}m...`);
       
-      const response = await fetch(OVERPASS_API, {
-        method: 'POST',
-        body: 'data=' + encodeURIComponent(query),
-        signal: controller.signal
-      });
+      // Requête élargie incluant plus de types
+      const query = `[out:json][timeout:15];
+      (
+        node["tourism"="museum"](around:${radius},${lat},${lon});
+        way["tourism"="museum"](around:${radius},${lat},${lon});
+        node["amenity"="theatre"](around:${radius},${lat},${lon});
+        way["amenity"="theatre"](around:${radius},${lat},${lon});
+        node["historic"="castle"](around:${radius},${lat},${lon});
+        way["historic"="castle"](around:${radius},${lat},${lon});
+        node["tourism"="attraction"](around:${radius},${lat},${lon});
+        node["tourism"="gallery"](around:${radius},${lat},${lon});
+        node["amenity"="arts_centre"](around:${radius},${lat},${lon});
+        node["historic"="monument"](around:${radius},${lat},${lon});
+      );
+      out center;`;
       
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        console.error('Overpass error:', response.status);
-        setLoadingPlaces(false);
-        return [];
-      }
-      
-      const data = await response.json();
-      console.log('Overpass found:', data.elements?.length, 'elements');
-      
-      const typeCounts = {museum: 0, theatre: 0, castle: 0};
-      const places = [];
-      
-      for (const el of data.elements) {
-        if (!el.tags || !el.tags.name) continue;
-        const elLat = el.lat || (el.center && el.center.lat);
-        const elLon = el.lon || (el.center && el.center.lon);
-        if (!elLat || !elLon) continue;
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 18000);
         
-        let type = null;
-        if (el.tags.tourism === 'museum') type = 'museum';
-        else if (el.tags.amenity === 'theatre') type = 'theatre';
-        else if (el.tags.historic === 'castle') type = 'castle';
-        if (!type) continue;
-        
-        if (type === 'theatre' && typeCounts.theatre >= 3) continue;
-        typeCounts[type]++;
-        
-        places.push({
-          name: el.tags.name,
-          type,
-          lat: elLat,
-          lon: elLon,
-          link: `https://www.google.com/maps/search/?api=1&query=${elLat},${elLon}`
+        const response = await fetch(OVERPASS_API, {
+          method: 'POST',
+          body: 'data=' + encodeURIComponent(query),
+          signal: controller.signal
         });
         
-        if (places.length >= 10) break;
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          console.warn(`⚠️ Overpass erreur ${response.status}, rayon ${radius}m`);
+          continue;
+        }
+        
+        const data = await response.json();
+        console.log(`📦 Trouvé ${data.elements?.length || 0} éléments bruts (rayon ${radius}m)`);
+        
+        const places = [];
+        const seen = new Set(); // Éviter les doublons
+        
+        for (const el of data.elements || []) {
+          if (!el.tags || !el.tags.name) continue;
+          
+          // Coordonnées
+          const elLat = el.lat || el.center?.lat;
+          const elLon = el.lon || el.center?.lon;
+          if (!elLat || !elLon) continue;
+          
+          // Éviter doublons
+          const key = `${el.tags.name}-${Math.round(elLat * 1000)}-${Math.round(elLon * 1000)}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          
+          // Déterminer le type et l'icône
+          let type = null;
+          let emoji = '🏛️';
+          
+          if (el.tags.tourism === 'museum') {
+            type = 'museum';
+            emoji = '🏛️';
+          } else if (el.tags.amenity === 'theatre') {
+            type = 'theatre';
+            emoji = '🎭';
+          } else if (el.tags.historic === 'castle') {
+            type = 'castle';
+            emoji = '🏰';
+          } else if (el.tags.tourism === 'attraction') {
+            type = 'attraction';
+            emoji = '🎪';
+          } else if (el.tags.tourism === 'gallery') {
+            type = 'gallery';
+            emoji = '🖼️';
+          } else if (el.tags.amenity === 'arts_centre') {
+            type = 'arts_centre';
+            emoji = '🎨';
+          } else if (el.tags.historic === 'monument') {
+            type = 'monument';
+            emoji = '🗿';
+          }
+          
+          if (!type) continue;
+          
+          places.push({
+            name: el.tags.name,
+            type,
+            emoji,
+            lat: elLat,
+            lon: elLon,
+            link: `https://www.google.com/maps/search/?api=1&query=${elLat},${elLon}`
+          });
+          
+          if (places.length >= 12) break;
+        }
+        
+        console.log(`✨ ${places.length} lieux uniques trouvés`);
+        
+        // Si on a trouvé des résultats, on s'arrête
+        if (places.length > 0) {
+          setLoadingPlaces(false);
+          return places;
+        }
+        
+      } catch (err) {
+        console.warn(`⚠️ Erreur rayon ${radius}m:`, err.message);
+        continue;
       }
-      
-      setLoadingPlaces(false);
-      return places;
-    } catch (err) {
-      console.error(err);
-      setLoadingPlaces(false);
-      return [];
     }
+    
+    // Aucun résultat après tous les essais
+    console.log('❌ Aucun lieu culturel trouvé après toutes les tentatives');
+    setLoadingPlaces(false);
+    return [];
   };
 
   // Générer un voyage
