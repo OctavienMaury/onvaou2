@@ -313,16 +313,34 @@ function App(){
   // Chercher les lieux culturels
   const fetchCulturalPlaces=async(lat,lon)=>{
     setLoadingPlaces(true);
-    const query=`[out:json][timeout:25];(node["tourism"="museum"](around:2000,${lat},${lon});way["tourism"="museum"](around:2000,${lat},${lon});node["amenity"="theatre"](around:2000,${lat},${lon});way["amenity"="theatre"](around:2000,${lat},${lon});node["historic"="castle"](around:2000,${lat},${lon});way["historic"="castle"](around:2000,${lat},${lon}););out center;`;
+    console.log('Fetching cultural places for:',lat,lon);
+    
+    // Requête simplifiée
+    const query=`[out:json][timeout:30];
+(
+  node["tourism"="museum"](around:3000,${lat},${lon});
+  node["amenity"="theatre"](around:3000,${lat},${lon});
+  node["historic"="castle"](around:3000,${lat},${lon});
+  way["tourism"="museum"](around:3000,${lat},${lon});
+  way["historic"="castle"](around:3000,${lat},${lon});
+);
+out center;`;
+    
+    console.log('Query:',query);
     
     try{
       const response=await fetch(OVERPASS_API,{
         method:'POST',
-        headers:{'Content-Type':'application/x-www-form-urlencoded'},
         body:'data='+encodeURIComponent(query)
       });
-      if(!response.ok)throw new Error('Overpass error');
+      console.log('Response status:',response.status);
+      if(!response.ok){
+        console.error('Overpass error:',response.status);
+        throw new Error('Overpass error');
+      }
       const data=await response.json();
+      console.log('Overpass data:',data);
+      console.log('Elements count:',data.elements?.length);
       
       const typeCounts={museum:0,theatre:0,castle:0};
       const places=[];
