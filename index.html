@@ -313,14 +313,7 @@ function App(){
   // Chercher les lieux culturels
   const fetchCulturalPlaces=async(lat,lon)=>{
     setLoadingPlaces(true);
-    const query=`[out:json][timeout:25];(
-      node["tourism"="museum"]["name"](around:2000,${lat},${lon});
-      way["tourism"="museum"]["name"](around:2000,${lat},${lon});
-      node["amenity"="theatre"]["name"](around:2000,${lat},${lon});
-      way["amenity"="theatre"]["name"](around:2000,${lat},${lon});
-      node["historic"="castle"]["name"](around:2000,${lat},${lon});
-      way["historic"="castle"]["name"](around:2000,${lat},${lon});
-    );out center tags qt;`;
+    const query=`[out:json][timeout:25];(node["tourism"="museum"](around:2000,${lat},${lon});way["tourism"="museum"](around:2000,${lat},${lon});node["amenity"="theatre"](around:2000,${lat},${lon});way["amenity"="theatre"](around:2000,${lat},${lon});node["historic"="castle"](around:2000,${lat},${lon});way["historic"="castle"](around:2000,${lat},${lon}););out center;`;
     
     try{
       const response=await fetch(OVERPASS_API,{
