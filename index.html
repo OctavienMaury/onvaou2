@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>On va où ?</title>
+<title>On va où ? 🚄</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -11,9 +11,10 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
-html,body,#root{height:100%;margin:0}
-.map{height:100%;width:100%}
+html,body,#root{margin:0;height:100%;background:#0a0a0f;color:#f5f5f7}
+.map{height:350px}
 .custom-marker{background:none;border:none}
+a{color:#00d4aa}
 </style>
 </head>
 
@@ -21,148 +22,203 @@ html,body,#root{height:100%;margin:0}
 <div id="root"></div>
 
 <script>
-const {useState,useEffect,useRef,useCallback} = React;
+const { useState, useEffect, useRef } = React;
 
-const API_PROXY_URL='https://soft-cake-00a9.kmdf29dr47.workers.dev';
-const OVERPASS_API='https://overpass-api.de/api/interpreter';
+/* ================= CONFIG ================= */
 
-const MAIN_STATIONS=[
- {name:'Paris Gare de Lyon',lat:48.8443,lon:2.3744},
- {name:'Lyon Part-Dieu',lat:45.7606,lon:4.8590},
- {name:'Marseille Saint-Charles',lat:43.3026,lon:5.3797}
+const API_PROXY_URL = 'https://soft-cake-00a9.kmdf29dr47.workers.dev';
+const OVERPASS_API = 'https://overpass-api.de/api/interpreter';
+
+const MAIN_STATIONS = [
+  { name:'Paris Gare de Lyon', id:'stop_area:SNCF:87686006' },
+  { name:'Lyon Part-Dieu', id:'stop_area:SNCF:87723197' },
+  { name:'Marseille Saint-Charles', id:'stop_area:SNCF:87751008' }
 ];
 
-function OptimizedMap({center,zoom,markers,polyline}) {
-  const mapRef = useRef(null);
-  const mapInstance = useRef(null);
-  const markersLayer = useRef(L.layerGroup());
-  const polylineLayer = useRef(L.layerGroup());
+/* ================= MAP OPTIMISÉE ================= */
 
-  // INIT MAP (once)
-  useEffect(()=>{
-    mapInstance.current = L.map(mapRef.current,{center,zoom});
+function MapView({ center, zoom, markers }) {
+  const mapRef = useRef(null);
+  const map = useRef(null);
+  const layer = useRef(null);
+
+  useEffect(() => {
+    map.current = L.map(mapRef.current, { center, zoom });
     L.tileLayer(
       'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-      {maxZoom:19}
-    ).addTo(mapInstance.current);
+      { maxZoom: 19 }
+    ).addTo(map.current);
 
-    markersLayer.current.addTo(mapInstance.current);
-    polylineLayer.current.addTo(mapInstance.current);
+    layer.current = L.layerGroup().addTo(map.current);
 
-    return ()=>mapInstance.current.remove();
-  },[]);
+    return () => map.current.remove();
+  }, []);
 
-  // UPDATE MARKERS
-  useEffect(()=>{
-    markersLayer.current.clearLayers();
-    const bounds=[];
+  useEffect(() => {
+    layer.current.clearLayers();
+    const bounds = [];
 
-    markers.forEach(m=>{
-      if(Number.isFinite(m.lat)&&Number.isFinite(m.lng)){
-        const icon=L.divIcon({
-          className:'custom-marker',
-          html:`<div style="
-            width:18px;height:18px;
-            background:${m.color};
-            border-radius:50%;
-            border:3px solid white"></div>`
-        });
+    markers.forEach(m => {
+      if (!Number.isFinite(m.lat) || !Number.isFinite(m.lng)) return;
 
-        L.marker([m.lat,m.lng],{icon})
-          .bindTooltip(m.label)
-          .addTo(markersLayer.current);
+      const icon = L.divIcon({
+        className:'custom-marker',
+        html:`<div style="
+          width:18px;height:18px;
+          background:${m.color};
+          border-radius:50%;
+          border:3px solid white"></div>`
+      });
 
-        bounds.push([m.lat,m.lng]);
-      }
+      const marker = L.marker([m.lat, m.lng], { icon });
+
+      marker.bindPopup(
+        `<strong>${m.label}</strong>` +
+        (m.link ? `<br><a href="${m.link}" target="_blank">Site du lieu</a>` : '')
+      );
+
+      marker.addTo(layer.current);
+      bounds.push([m.lat, m.lng]);
     });
 
-    if(bounds.length>1){
-      mapInstance.current.fitBounds(bounds,{padding:[40,40]});
-    } else if(bounds.length===1){
-      mapInstance.current.setView(bounds[0],zoom);
+    if (bounds.length > 1) {
+      map.current.fitBounds(bounds, { padding:[40,40] });
     }
-  },[markers]);
+  }, [markers]);
 
-  // UPDATE POLYLINE
-  useEffect(()=>{
-    polylineLayer.current.clearLayers();
-    if(polyline?.length>=2){
-      L.polyline(polyline,{
-        color:'#00d4aa',
-        weight:3,
-        dashArray:'8,6'
-      }).addTo(polylineLayer.current);
-    }
-  },[polyline]);
-
-  return <div ref={mapRef} className="map"></div>;
+  return React.createElement('div', { ref: mapRef, className:'map' });
 }
 
-function App(){
-  const [journey,setJourney]=useState(null);
-  const [places,setPlaces]=useState([]);
+/* ================= LIEUX CULTURELS ================= */
 
-  const fetchPlaces = async(lat,lon)=>{
-    const query=`[out:json];
-      node["tourism"="museum"](around:2000,${lat},${lon});
-      node["historic"="castle"](around:2000,${lat},${lon});
-      node["historic"="monument"](around:2000,${lat},${lon});
-    out;`;
+async function fetchCulturalPlaces(lat, lon) {
+  const query = `
+[out:json][timeout:25];
+(
+  node["tourism"="museum"]["name"](around:2000,${lat},${lon});
+  way["tourism"="museum"]["name"](around:2000,${lat},${lon});
 
-    const res=await fetch(OVERPASS_API,{
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body:'data='+encodeURIComponent(query)
+  node["amenity"="theatre"]["name"](around:2000,${lat},${lon});
+  way["amenity"="theatre"]["name"](around:2000,${lat},${lon});
+
+  node["historic"="castle"]["name"](around:2000,${lat},${lon});
+  way["historic"="castle"]["name"](around:2000,${lat},${lon});
+);
+out center tags;
+`;
+
+  const res = await fetch(OVERPASS_API, {
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'data=' + encodeURIComponent(query)
+  });
+
+  const data = await res.json();
+
+  const limits = { museum:5, theatre:2, castle:3 };
+  const counts = {};
+
+  return data.elements.map(el => {
+    const lat = el.lat || el.center?.lat;
+    const lon = el.lon || el.center?.lon;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+    let type = null;
+    if (el.tags.tourism === 'museum') type = 'museum';
+    else if (el.tags.amenity === 'theatre') type = 'theatre';
+    else if (el.tags.historic === 'castle') type = 'castle';
+    else return null;
+
+    counts[type] = (counts[type] || 0) + 1;
+    if (counts[type] > limits[type]) return null;
+
+    const link =
+      el.tags.website ||
+      el.tags['contact:website'] ||
+      (el.tags.wikipedia
+        ? 'https://wikipedia.org/wiki/' + el.tags.wikipedia.split(':')[1]
+        : null);
+
+    return { name: el.tags.name, lat, lon, type, link };
+  }).filter(Boolean);
+}
+
+/* ================= APP ================= */
+
+function App() {
+  const [journey, setJourney] = useState(null);
+  const [places, setPlaces] = useState([]);
+
+  async function generate() {
+    const dep = MAIN_STATIONS[0];
+
+    const search = await fetch(`${API_PROXY_URL}/search?q=${encodeURIComponent(dep.name)}`);
+    const searchData = await search.json();
+    const stopArea = searchData.places[0];
+
+    const departures = await fetch(`${API_PROXY_URL}/departures/${stopArea.id}`);
+    const depData = await departures.json();
+
+    const dest = depData.destinations[
+      Math.floor(Math.random() * depData.destinations.length)
+    ];
+
+    setJourney({
+      departure: dep.name,
+      arrival: dest.name,
+      depCoord: stopArea.stop_area.coord,
+      arrCoord: dest.coord
     });
 
-    const data=await res.json();
-    return data.elements
-      .filter(e=>e.tags?.name)
-      .slice(0,8)
-      .map(e=>({
-        name:e.tags.name,
-        lat:e.lat,
-        lon:e.lon
-      }));
-  };
-
-  const generate=async()=>{
-    const dep=MAIN_STATIONS[0];
-    const arr=MAIN_STATIONS[Math.floor(Math.random()*MAIN_STATIONS.length)];
-
-    setJourney({dep,arr});
-    const p=await fetchPlaces(arr.lat,arr.lon);
+    const p = await fetchCulturalPlaces(
+      parseFloat(dest.coord.lat),
+      parseFloat(dest.coord.lon)
+    );
     setPlaces(p);
-  };
+  }
 
   const markers = journey ? [
-    {lat:journey.dep.lat,lng:journey.dep.lon,label:journey.dep.name,color:'#00a3ff'},
-    {lat:journey.arr.lat,lng:journey.arr.lon,label:journey.arr.name,color:'#00d4aa'},
-    ...places.map(p=>({
-      lat:p.lat,lng:p.lon,label:p.name,color:'#ff6b6b'
+    {
+      lat: parseFloat(journey.depCoord.lat),
+      lng: parseFloat(journey.depCoord.lon),
+      label: journey.departure,
+      color:'#00a3ff'
+    },
+    {
+      lat: parseFloat(journey.arrCoord.lat),
+      lng: parseFloat(journey.arrCoord.lon),
+      label: journey.arrival,
+      color:'#00d4aa'
+    },
+    ...places.map(p => ({
+      lat:p.lat,
+      lng:p.lon,
+      label:p.name,
+      link:p.link,
+      color:
+        p.type === 'museum' ? '#00a3ff' :
+        p.type === 'theatre' ? '#ff6b6b' :
+        '#ffa500'
     }))
   ] : [];
 
-  return (
-    <div style={{height:'100%'}}>
-      <button onClick={generate} style={{position:'absolute',zIndex:1000}}>
-        Générer
-      </button>
-
-      <OptimizedMap
-        center={[46.6,1.9]}
-        zoom={6}
-        markers={markers}
-        polyline={journey ? [
-          [journey.dep.lat,journey.dep.lon],
-          [journey.arr.lat,journey.arr.lon]
-        ] : null}
-      />
-    </div>
+  return React.createElement(
+    'div',
+    null,
+    React.createElement('button',{onClick:generate},'🎲 Générer'),
+    journey && React.createElement('h3',null,
+      journey.departure,' → ',journey.arrival
+    ),
+    React.createElement(MapView,{
+      center:[46.6,1.9],
+      zoom:6,
+      markers
+    })
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+ReactDOM.createRoot(document.getElementById('root'))
+  .render(React.createElement(App));
 </script>
 </body>
 </html>
