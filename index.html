@@ -120,8 +120,25 @@ const TRANSPORT_MODES = {
   'Intercités': 'intercites'
 };
 
-const PLACE_EMOJIS = {museum: '🛏️', theatre: '🎭', castle: '🏰'};
-const TYPE_LABELS = {museum: 'Musée', theatre: 'Théâtre', castle: 'Château'};
+const PLACE_EMOJIS = {
+  museum: '🏛️', 
+  theatre: '🎭', 
+  castle: '🏰',
+  attraction: '🎪',
+  gallery: '🖼️',
+  arts_centre: '🎨',
+  monument: '🗿'
+};
+
+const TYPE_LABELS = {
+  museum: 'Musée', 
+  theatre: 'Théâtre', 
+  castle: 'Château',
+  attraction: 'Attraction',
+  gallery: 'Galerie d\'art',
+  arts_centre: 'Centre culturel',
+  monument: 'Monument'
+};
 
 const MAIN_STATIONS = [
   {name: 'Paris Gare de Lyon', id: 'stop_area:SNCF:87686006'},
@@ -520,15 +537,65 @@ function App() {
         throw new Error(`Aucune destination trouvée. ${suggestion}`);
       }
       
-      // 3. Filtrer les destinations (exclure la gare de départ et vérifier les coords)
+      // 3. Filtrer les destinations intelligemment
       const originalCount = destinations.length;
+      
+      // Normaliser le nom de la gare de départ pour comparaison
+      const normalizeStationName = (name) => {
+        return name
+          .toLowerCase()
+          .replace(/gare\s+(de|du|d'|de l')\s+/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+      
+      const departureNormalized = normalizeStationName(selectedStation.name);
+      const depLat = parseFloat(departureCoords?.lat || 48.8566);
+      const depLon = parseFloat(departureCoords?.lon || 2.3522);
+      
       destinations = destinations.filter(d => {
-        const hasCoords = d.coord && d.coord.lat && d.coord.lon;
-        const isDifferent = d.name !== selectedStation.name;
-        return hasCoords && isDifferent;
+        // Vérifier les coordonnées
+        if (!d.coord || !d.coord.lat || !d.coord.lon) return false;
+        
+        // Normaliser le nom de destination
+        const destNormalized = normalizeStationName(d.name);
+        
+        // Exclure si c'est exactement le même nom
+        if (destNormalized === departureNormalized) {
+          console.log(`❌ Exclu (nom identique): ${d.name}`);
+          return false;
+        }
+        
+        // Exclure si le nom contient celui de la gare de départ
+        if (destNormalized.includes(departureNormalized) || departureNormalized.includes(destNormalized)) {
+          console.log(`❌ Exclu (noms similaires): ${d.name} ≈ ${selectedStation.name}`);
+          return false;
+        }
+        
+        // Calculer la distance entre départ et arrivée
+        const lat2 = parseFloat(d.coord.lat);
+        const lon2 = parseFloat(d.coord.lon);
+        
+        // Distance en km (formule haversine simplifiée)
+        const R = 6371; // Rayon de la Terre en km
+        const dLat = (lat2 - depLat) * Math.PI / 180;
+        const dLon = (lon2 - depLon) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(depLat * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                  Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const distance = R * c;
+        
+        // Exclure les destinations trop proches (moins de 10km)
+        if (distance < 10) {
+          console.log(`❌ Exclu (trop proche ${Math.round(distance)}km): ${d.name}`);
+          return false;
+        }
+        
+        return true;
       });
       
-      console.log(`✨ ${destinations.length}/${originalCount} destinations valides (avec coordonnées)`);
+      console.log(`✨ ${destinations.length}/${originalCount} destinations valides (après filtrage intelligent)`);
       
       if (destinations.length === 0) {
         throw new Error('Aucune destination avec coordonnées valides');
@@ -668,7 +735,7 @@ function App() {
           )
         ),
         h('div', {className: 'cultural-section'},
-          h('h3', null, '🛏️ Lieux culturels à proximité'),
+          h('h3', null, '🏛️ Lieux culturels à proximité'),
           loadingPlaces ? h('div', {className: 'places-loading'}, 'Recherche des lieux...') :
           culturalPlaces.length > 0 ? h('div', {className: 'places-grid'},
             culturalPlaces.map((p, i) => h('a', {
@@ -678,10 +745,10 @@ function App() {
               target: '_blank',
               rel: 'noopener noreferrer'
             },
-              h('span', {className: 'place-icon'}, PLACE_EMOJIS[p.type]),
+              h('span', {className: 'place-icon'}, p.emoji || PLACE_EMOJIS[p.type] || '📍'),
               h('div', {className: 'place-info'},
                 h('h4', null, p.name),
-                h('p', null, TYPE_LABELS[p.type]),
+                h('p', null, TYPE_LABELS[p.type] || p.type),
                 h('span', {className: 'place-link'}, 'Voir sur Google Maps →')
               )
             ))
