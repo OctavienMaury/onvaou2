@@ -4,12 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>On va où ? 🚄</title>
-  <meta name="description" content="Trouvez votre prochaine destination de voyage en train !" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚄</text></svg>">
   <style>
     :root{--bg-primary:#0a0a0f;--bg-secondary:#12121a;--bg-card:#1a1a24;--text-primary:#f5f5f7;--text-secondary:#a0a0b0;--accent:#00d4aa;--accent-glow:rgba(0,212,170,0.3);--accent-secondary:#ff6b6b;--border:rgba(255,255,255,0.08);--gradient-1:linear-gradient(135deg,#00d4aa 0%,#00a3ff 100%);--gradient-2:linear-gradient(135deg,#ff6b6b 0%,#ffa500 100%)}
     *{margin:0;padding:0;box-sizing:border-box}
@@ -22,26 +20,61 @@
     .logo{display:flex;align-items:center;gap:0.75rem}
     .logo-icon{font-size:1.75rem}
     .logo-text{font-family:'Instrument Serif',serif;font-size:1.5rem;font-style:italic;background:var(--gradient-1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-    .github-link{color:var(--text-secondary);text-decoration:none;display:flex;align-items:center;gap:0.5rem;font-size:0.875rem;transition:color 0.2s}
-    .github-link:hover{color:var(--text-primary)}
     .main-content{flex:1;display:flex;flex-direction:column;padding:2rem;max-width:1400px;margin:0 auto;width:100%}
     .hero{text-align:center;padding:3rem 0 4rem;position:relative}
-    .hero::before{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:600px;height:600px;background:radial-gradient(circle,var(--accent-glow) 0%,transparent 70%);opacity:0.4;pointer-events:none}
     .hero h1{font-size:clamp(2.5rem,8vw,5rem);margin-bottom:1rem;position:relative}
     .hero p{color:var(--text-secondary);font-size:1.125rem;max-width:500px;margin:0 auto;line-height:1.6}
     .selection-panel{background:var(--bg-card);border:1px solid var(--border);border-radius:1.5rem;padding:2rem;margin-bottom:2rem;display:grid;grid-template-columns:1fr 1fr auto;gap:1.5rem;align-items:end}
     @media(max-width:768px){.selection-panel{grid-template-columns:1fr}}
     .form-group{display:flex;flex-direction:column;gap:0.5rem;position:relative}
     .form-group label{font-size:0.875rem;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.05em}
-    .select-wrapper{position:relative}
-    .select-wrapper select, .form-group input{width:100%;padding:1rem;font-size:1rem;font-family:inherit;background:var(--bg-secondary);border:1px solid var(--border);border-radius:0.75rem;color:var(--text-primary);outline:none;transition:border-color 0.2s}
+    
+    /* STYLE INPUT & SELECT HARMONISÉ */
+    .form-group input, .select-wrapper select {
+      width: 100%;
+      padding: 1rem;
+      font-size: 1rem;
+      font-family: inherit;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .select-wrapper select { appearance: none; cursor: pointer; padding-right: 2.5rem; }
     .select-wrapper::after{content:'▼';position:absolute;right:1rem;top:50%;transform:translateY(-50%);color:var(--text-secondary);font-size:0.75rem;pointer-events:none}
+    
+    /* AUTOCOMPLETE LIST */
+    .autocomplete-results {
+      position: absolute;
+      top: 100%; left: 0; right: 0;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      margin-top: 0.5rem;
+      max-height: 250px;
+      overflow-y: auto;
+      z-index: 1000;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+    .autocomplete-item {
+      padding: 0.8rem 1rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.2s;
+      border-bottom: 1px solid var(--border);
+    }
+    .autocomplete-item:last-child { border-bottom: none; }
+    .autocomplete-item:hover { background: var(--bg-secondary); color: var(--accent); }
+
     .generate-btn{padding:1rem 2.5rem;font-size:1rem;font-family:inherit;font-weight:600;background:var(--gradient-1);border:none;border-radius:0.75rem;color:var(--bg-primary);cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;white-space:nowrap}
     .generate-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 10px 30px var(--accent-glow)}
     .generate-btn:disabled{opacity:0.6;cursor:not-allowed}
     .generate-btn.loading{position:relative;color:transparent}
     .generate-btn.loading::after{content:'';position:absolute;top:50%;left:50%;width:20px;height:20px;margin:-10px 0 0 -10px;border:2px solid var(--bg-primary);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
+    
     .result-section{animation:fadeInUp 0.6s ease-out}
     @keyframes fadeInUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
     .journey-header{display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;padding:1.5rem;background:var(--bg-card);border:1px solid var(--border);border-radius:1rem}
@@ -49,12 +82,14 @@
     .journey-info p{color:var(--text-secondary);font-size:0.9rem}
     .journey-route{display:flex;align-items:center;gap:0.75rem;color:var(--accent)}
     .journey-route .arrow{font-size:1.25rem}
+    
     .maps-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem}
     @media(max-width:900px){.maps-grid{grid-template-columns:1fr}}
     .map-card{background:var(--bg-card);border:1px solid var(--border);border-radius:1rem;overflow:hidden}
     .map-card-header{padding:1rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.5rem}
     .map-card-header h3{font-size:1rem;font-family:'DM Sans',sans-serif;font-weight:600}
     .map-container{height:350px;position:relative}
+    
     .cultural-section{background:var(--bg-card);border:1px solid var(--border);border-radius:1rem;padding:1.5rem;margin-bottom:1.5rem}
     .cultural-section h3{font-size:1.25rem;margin-bottom:1rem;display:flex;align-items:center;gap:0.5rem}
     .places-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:1rem}
@@ -63,27 +98,19 @@
     .place-icon{font-size:1.5rem;flex-shrink:0}
     .place-info h4{font-size:0.9rem;font-family:'DM Sans',sans-serif;font-weight:500;margin-bottom:0.25rem}
     .place-info p{font-size:0.75rem;color:var(--text-secondary)}
-    .no-places{color:var(--text-secondary);font-style:italic;text-align:center;padding:2rem}
+    
     .booking-section{text-align:center;padding:2rem 0}
-    .booking-section h3{font-size:1.5rem;margin-bottom:1.5rem}
     .booking-buttons{display:flex;justify-content:center;gap:1rem;flex-wrap:wrap}
     .booking-btn{padding:0.875rem 2rem;font-size:0.9rem;font-family:inherit;font-weight:600;border:none;border-radius:0.75rem;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:0.5rem;transition:transform 0.2s}
-    .booking-btn:hover{transform:translateY(-2px)}
     .booking-btn.sncf{background:#000;color:#32e5fd;border:1px solid #32e5fd}
-    .booking-btn.trainline{background:#36d1b0;color:#fff}
     .booking-btn.new-trip{background:var(--gradient-2);color:#fff}
+    
     .loading-overlay{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4rem;text-align:center}
     .loading-train{font-size:3rem;animation:trainMove 1.5s ease-in-out infinite}
     @keyframes trainMove{0%,100%{transform:translateX(-20px)}50%{transform:translateX(20px)}}
     .loading-text{margin-top:1rem;color:var(--text-secondary)}
     .error-message{background:rgba(255,107,107,0.1);border:1px solid var(--accent-secondary);border-radius:0.75rem;padding:1rem 1.5rem;color:var(--accent-secondary);text-align:center;margin-bottom:1rem}
-    .footer{padding:2rem;text-align:center;border-top:1px solid var(--border);color:var(--text-secondary);font-size:0.875rem}
-    .footer a{color:var(--accent);text-decoration:none}
-    
-    /* Autocomplete logique sans casser la DA */
-    .autocomplete-results{position:absolute;top:100%;left:0;right:0;background:var(--bg-card);border:1px solid var(--border);border-radius:0.75rem;margin-top:0.5rem;z-index:1000;max-height:200px;overflow-y:auto;box-shadow:0 10px 25px rgba(0,0,0,0.5)}
-    .autocomplete-item{padding:0.75rem 1rem;cursor:pointer;transition:background 0.2s;font-size:0.9rem}
-    .autocomplete-item:hover{background:var(--bg-secondary);color:var(--accent)}
+    .footer{padding:2rem;text-align:center;color:var(--text-secondary);font-size:0.875rem}
   </style>
 </head>
 <body>
@@ -92,220 +119,214 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-const{useState,useEffect,useRef,useCallback}=React;
+    const { useState, useEffect, useRef } = React;
 
-const API_PROXY_URL='https://soft-cake-00a9.kmdf29dr47.workers.dev';
-const OVERPASS_API='https://overpass-api.de/api/interpreter';
+    const API_PROXY_URL = 'https://soft-cake-00a9.kmdf29dr47.workers.dev';
+    const OVERPASS_API = 'https://overpass-api.de/api/interpreter';
 
-const TRANSPORT_MODES={
-  'Grande vitesse (TGV, OUIGO...)':'physical_mode:LongDistanceTrain',
-  'TER (régional)':'physical_mode:LocalTrain',
-  'Intercités':'physical_mode:LongDistanceTrain',
-  'Tous les trains':'all'
-};
+    const TRANSPORT_MODES = {
+      'Grande vitesse (TGV, OUIGO...)': 'physical_mode:LongDistanceTrain',
+      'TER (régional)': 'physical_mode:LocalTrain',
+      'Intercités': 'physical_mode:LongDistanceTrain',
+      'Tous les trains': 'all'
+    };
 
-const PLACE_EMOJIS={museum:'🏛️',theatre:'🎭',art_gallery:'🎨',castle:'🏰',monument:'🗿',church:'⛪',archaeological_site:'🏺',default:'⭐'};
-const TYPE_LABELS={museum:'Musée',theatre:'Théâtre',art_gallery:"Galerie d'art",castle:'Château',monument:'Monument',church:'Église',archaeological_site:'Site archéologique',default:"Lieu d'intérêt"};
+    const PLACE_EMOJIS = { museum: '🏛️', castle: '🏰', monument: '🗿', art_gallery: '🎨', theatre: '🎭', default: '⭐' };
+    const TYPE_LABELS = { museum: 'Musée', castle: 'Château', monument: 'Monument', art_gallery: "Galerie d'art", theatre: 'Théâtre', default: "Lieu d'intérêt" };
 
-function MapView({center,markers,polyline,zoom=12,mapKey}){
-  const mapRef=useRef(null);
-  const mapInstanceRef=useRef(null);
+    function MapView({ center, markers, polyline, mapKey }) {
+      const mapRef = useRef(null);
+      const instance = useRef(null);
 
-  useEffect(()=>{
-    if(!mapRef.current) return;
-    if(mapInstanceRef.current){mapInstanceRef.current.remove();mapInstanceRef.current=null}
-    
-    // Sécurité anti-crash : vérifier que le centre est valide
-    if(!center || isNaN(center[0]) || isNaN(center[1])) return;
+      useEffect(() => {
+        if (!mapRef.current) return;
+        if (instance.current) { instance.current.remove(); instance.current = null; }
 
-    mapInstanceRef.current=L.map(mapRef.current,{center,zoom,zoomControl:true});
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(mapInstanceRef.current);
-    
-    const map=mapInstanceRef.current;
-    const bounds=[];
+        const lat = parseFloat(center[0]);
+        const lon = parseFloat(center[1]);
+        if (isNaN(lat) || isNaN(lon)) return;
 
-    if(markers && markers.length > 0){
-      markers.forEach(({lat,lng,label,color='blue'})=>{
-        if(!isNaN(lat) && !isNaN(lng)){
-          const colorMap={green:'#00d4aa',red:'#ff6b6b',blue:'#00a3ff'};
-          const icon=L.divIcon({className:'custom-marker',html:`<div style="background:${colorMap[color]||colorMap.blue};width:16px;height:16px;border-radius:50%;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,iconSize:[16,16],iconAnchor:[8,8]});
-          L.marker([lat,lng],{icon}).bindTooltip(label).addTo(map);
-          bounds.push([lat,lng]);
+        instance.current = L.map(mapRef.current).setView([lat, lon], 12);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(instance.current);
+
+        const group = L.featureGroup();
+        if (markers) {
+          markers.forEach(m => {
+            const colorMap = { green: '#00d4aa', red: '#ff6b6b', blue: '#00a3ff' };
+            const icon = L.divIcon({
+              className: 'marker',
+              html: `<div style="background:${colorMap[m.color]};width:18px;height:18px;border-radius:50%;border:2px solid white;box-shadow:0 2px 5px rgba(0,0,0,0.5)"></div>`,
+              iconAnchor: [9, 9]
+            });
+            L.marker([m.lat, m.lng], { icon }).bindTooltip(m.label).addTo(group);
+          });
         }
-      });
+        if (polyline) L.polyline(polyline, { color: '#00d4aa', dashArray: '10, 10' }).addTo(instance.current);
+        
+        group.addTo(instance.current);
+        if (markers && markers.length > 1) instance.current.fitBounds(group.getBounds(), { padding: [40, 40] });
+
+        return () => { if (instance.current) instance.current.remove(); };
+      }, [mapKey, markers]);
+
+      return React.createElement('div', { ref: mapRef, style: { height: '100%', width: '100%' } });
     }
 
-    if(polyline && polyline.length>=2) L.polyline(polyline,{color:'#00d4aa',weight:3,opacity:0.8,dashArray:'10, 10'}).addTo(map);
-    if(bounds.length>1) map.fitBounds(bounds,{padding:[50,50]});
+    function App() {
+      const [searchInput, setSearchInput] = useState('');
+      const [suggestions, setSuggestions] = useState([]);
+      const [selectedStation, setSelectedStation] = useState(null);
+      const [selectedMode, setSelectedMode] = useState('Grande vitesse (TGV, OUIGO...)');
+      const [journey, setJourney] = useState(null);
+      const [places, setPlaces] = useState([]);
+      const [loading, setLoading] = useState(false);
+      const [loadingPlaces, setLoadingPlaces] = useState(false);
+      const [error, setError] = useState(null);
 
-    return()=>{if(mapInstanceRef.current){mapInstanceRef.current.remove();mapInstanceRef.current=null}};
-  },[mapKey, markers]);
+      // Logique Autocomplete
+      useEffect(() => {
+        const timer = setTimeout(async () => {
+          if (searchInput.length > 2 && (!selectedStation || searchInput !== selectedStation.name)) {
+            try {
+              const res = await fetch(`${API_PROXY_URL}/search?q=${encodeURIComponent(searchInput)}`);
+              const data = await res.json();
+              const gares = (data.places || []).filter(p => p.embedded_type === "stop_area");
+              setSuggestions(gares);
+            } catch (e) { console.error(e); }
+          } else { setSuggestions([]); }
+        }, 300);
+        return () => clearTimeout(timer);
+      }, [searchInput, selectedStation]);
 
-  return React.createElement('div',{ref:mapRef,style:{height:'100%',width:'100%'}});
-}
-
-function App(){
-  const[searchInput,setSearchInput]=useState('');
-  const[suggestions,setSuggestions]=useState([]);
-  const[selectedStation,setSelectedStation]=useState(null);
-  const[selectedMode,setSelectedMode]=useState('Grande vitesse (TGV, OUIGO...)');
-  const[loading,setLoading]=useState(false);
-  const[loadingPlaces,setLoadingPlaces]=useState(false);
-  const[error,setError]=useState(null);
-  const[journey,setJourney]=useState(null);
-  const[culturalPlaces,setCulturalPlaces]=useState([]);
-
-  // Autocomplete
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (searchInput.length > 2 && (!selectedStation || searchInput !== selectedStation.name)) {
+      const fetchPlaces = async (lat, lon, city) => {
+        setLoadingPlaces(true);
+        const query = `[out:json][timeout:25];(node["tourism"~"museum|art_gallery"](around:3000,${lat},${lon});way["historic"~"castle|monument"](around:5000,${lat},${lon});node["amenity"="theatre"](around:1000,${lat},${lon}););out center tags;`;
         try {
-          const res = await fetch(`${API_PROXY_URL}/search?q=${encodeURIComponent(searchInput)}`);
+          const res = await fetch(OVERPASS_API, { method: 'POST', body: 'data=' + encodeURIComponent(query) });
           const data = await res.json();
-          const gares = (data.places || []).filter(p => p.embedded_type === "stop_area");
-          setSuggestions(gares);
+          const results = data.elements.map(el => {
+            const tags = el.tags;
+            const type = tags.tourism === 'museum' ? 'museum' : tags.historic === 'castle' ? 'castle' : tags.amenity === 'theatre' ? 'theatre' : tags.tourism === 'art_gallery' ? 'art_gallery' : 'default';
+            return {
+              name: tags.name,
+              type: type,
+              lat: el.lat || el.center.lat,
+              lng: el.lon || el.center.lon,
+              url: tags.website || `https://www.google.com/search?q=${encodeURIComponent(tags.name + ' ' + city)}`
+            };
+          }).filter(p => p.name).slice(0, 12);
+          setPlaces(results);
         } catch (e) { console.error(e); }
-      } else { setSuggestions([]); }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchInput, selectedStation]);
-
-  const fetchCulturalPlaces=async(lat,lon, cityName)=>{
-    setLoadingPlaces(true);
-    const query=`[out:json][timeout:25];(node["tourism"~"museum|art_gallery"](around:2500,${lat},${lon});way["historic"~"castle|monument"](around:5000,${lat},${lon});node["amenity"="theatre"](around:800,${lat},${lon}););out center tags;`;
-    try{
-      const response=await fetch(OVERPASS_API,{method:'POST',body:'data='+encodeURIComponent(query)});
-      const data=await response.json();
-      const places=data.elements.filter(el=>el.tags && el.tags.name).map(el=>{
-        const elLat=el.lat||(el.center && el.center.lat);
-        const elLon=el.lon||(el.center && el.center.lon);
-        let type='default';
-        if(el.tags.tourism==='museum') type='museum';
-        else if(el.tags.historic==='castle') type='castle';
-        const website = el.tags.website || el.tags['contact:website'] || `https://www.google.com/search?q=${encodeURIComponent(el.tags.name + ' ' + cityName)}`;
-        return{name:el.tags.name,type,lat:elLat,lon:elLon,url:website};
-      }).slice(0,12);
-      setLoadingPlaces(false);
-      return places;
-    }catch(err){setLoadingPlaces(false);return[]}
-  };
-
-  const generateJourney=async()=>{
-    if(!selectedStation) { setError("Veuillez sélectionner une gare"); return; }
-    setLoading(true);setError(null);setJourney(null);setCulturalPlaces([]);
-    
-    try{
-      let url=`${API_PROXY_URL}/departures/${encodeURIComponent(selectedStation.id)}`;
-      const modeParam = TRANSPORT_MODES[selectedMode];
-      if(modeParam !== 'all') url+=`?mode=${encodeURIComponent(modeParam)}`;
-
-      const res=await fetch(url);
-      const data=await res.json();
-      let dests=data.destinations||[];
-
-      // Filtrage strict
-      if (selectedMode.includes('Grande vitesse')) {
-        dests = dests.filter(d => /TGV|OUIGO|ICE|EUROSTAR|INOUÏ/i.test(d.line) && !/TER|ZOU|RER|BUS/i.test(d.line));
-      } else if (selectedMode === 'TER (régional)') {
-        dests = dests.filter(d => /TER|ZOU|REMI|NOMAD/i.test(d.line) && !/TGV|OUIGO/i.test(d.line));
-      }
-
-      if(dests.length===0) throw new Error("Aucune destination trouvée.");
-      
-      const randomDest=dests[Math.floor(Math.random()*dests.length)];
-      
-      // Construction données voyage avec mapping lon -> lng pour Leaflet
-      const journeyData={
-        departure:{name:selectedStation.name, coord:selectedStation.stop_area.coord},
-        arrival:{name:randomDest.name, coord:randomDest.coord},
-        line:randomDest.line
+        setLoadingPlaces(false);
       };
-      
-      setJourney(journeyData);
-      const places=await fetchCulturalPlaces(parseFloat(randomDest.coord.lat),parseFloat(randomDest.coord.lon), randomDest.name);
-      setCulturalPlaces(places);
-    }catch(err){setError(err.message);}finally{setLoading(false)}
-  };
 
-  const mapKey=journey?`${journey.departure.name}-${journey.arrival.name}`:'init';
-  const h=React.createElement;
+      const generate = async () => {
+        if (!selectedStation) { setError("Veuillez choisir une gare dans la liste"); return; }
+        setLoading(true); setError(null); setJourney(null);
+        try {
+          let depUrl = `${API_PROXY_URL}/departures/${encodeURIComponent(selectedStation.id)}`;
+          if (selectedMode !== 'Tous les trains') depUrl += `?mode=${TRANSPORT_MODES[selectedMode]}`;
 
-  return h('div',{className:'app-container'},
-    h('header',{className:'header'},
-      h('div',{className:'logo'},h('span',{className:'logo-icon'},'🚄'),h('span',{className:'logo-text'},'On va où ?')),
-      h('a',{className:'github-link',href:'https://github.com',target:'_blank'},'GitHub →')
-    ),
-    h('main',{className:'main-content'},
-      h('section',{className:'hero'},
-        h('h1',null,'Où va-t-on ?'),
-        h('p',null,'Laissez le hasard décider de votre prochaine escapade en train !')
-      ),
-      h('div',{className:'selection-panel'},
-        h('div',{className:'form-group'},
-          h('label',null,'Gare de départ'),
-          h('input', {
-            type: 'text',
-            value: searchInput,
-            placeholder: 'Chercher une gare...',
-            onChange: (e) => setSearchInput(e.target.value)
-          }),
-          suggestions.length > 0 && h('div', {className: 'autocomplete-results'},
-            suggestions.map(s => h('div', {
-              key: s.id,
-              className: 'autocomplete-item',
-              onClick: () => { setSelectedStation(s); setSearchInput(s.name); setSuggestions([]); }
-            }, s.name))
-          )
+          const dRes = await fetch(depUrl);
+          const dData = await dRes.json();
+          let dests = dData.destinations || [];
+
+          if (selectedMode.includes('Grande vitesse')) {
+            dests = dests.filter(d => /TGV|OUIGO|ICE|INOUÏ|EUROSTAR/i.test(d.line) && !/TER|ZOU|RER|BUS|TRANSILIEN/i.test(d.line));
+          }
+
+          if (dests.length === 0) throw new Error("Aucun train trouvé pour cette sélection.");
+
+          const choice = dests[Math.floor(Math.random() * dests.length)];
+          const newJourney = {
+            from: { name: selectedStation.name, lat: selectedStation.stop_area.coord.lat, lng: selectedStation.stop_area.coord.lon },
+            to: { name: choice.name, lat: choice.coord.lat, lng: choice.coord.lon },
+            line: choice.line
+          };
+          setJourney(newJourney);
+          fetchPlaces(choice.coord.lat, choice.coord.lon, choice.name);
+        } catch (e) { setError(e.message); }
+        setLoading(false);
+      };
+
+      const h = React.createElement;
+
+      return h('div', { className: 'app-container' },
+        h('header', { className: 'header' },
+          h('div', { className: 'logo' }, h('span', { className: 'logo-icon' }, '🚄'), h('span', { className: 'logo-text' }, 'On va où ?'))
         ),
-        h('div',{className:'form-group'},
-          h('label',null,'Type de train'),
-          h('div',{className:'select-wrapper'},
-            h('select',{value:selectedMode,onChange:e=>setSelectedMode(e.target.value)},
-              Object.keys(TRANSPORT_MODES).map(m=>h('option',{key:m,value:m},m))
-            )
-          )
-        ),
-        h('button',{className:`generate-btn ${loading?'loading':''}`,onClick:generateJourney,disabled:loading||!selectedStation},loading?'':'🎲 Générer')
-      ),
-      error&&h('div',{className:'error-message'},error),
-      loading&&h('div',{className:'loading-overlay'},h('div',{className:'loading-train'},'🚄'),h('p',{className:'loading-text'},'Recherche...')),
-      journey&&h('div',{className:'result-section'},
-        h('div',{className:'journey-header'},
-          h('span',{className:'journey-icon'},'🚂'),
-          h('div',{className:'journey-info'},
-            h('div',{className:'journey-route'},h('span',null,journey.departure.name),h('span',{className:'arrow'},'→'),h('span',null,journey.arrival.name)),
-            h('p',null,`Via ${journey.line}`)
-          )
-        ),
-        h('div',{className:'maps-grid'},
-          h('div',{className:'map-card'},
-            h('div',{className:'map-card-header'},h('span',null,'🗺️'),h('h3',null,'Itinéraire')),
-            h('div',{className:'map-container'},h(MapView,{key:'j-'+mapKey,mapKey:'j-'+mapKey,center:[46.6,1.9],markers:[{lat:parseFloat(journey.departure.coord?.lat),lng:parseFloat(journey.departure.coord?.lon),label:journey.departure.name,color:'blue'},{lat:parseFloat(journey.arrival.coord?.lat),lng:parseFloat(journey.arrival.coord?.lon),label:journey.arrival.name,color:'green'}],polyline:[[parseFloat(journey.departure.coord?.lat),parseFloat(journey.departure.coord?.lon)],[parseFloat(journey.arrival.coord?.lat),parseFloat(journey.arrival.coord?.lon)]],zoom:6}))
+        h('main', { className: 'main-content' },
+          h('section', { className: 'hero' }, h('h1', null, 'Où va-t-on ?'), h('p', null, 'Le hasard guide votre prochain voyage.')),
+          h('div', { className: 'selection-panel' },
+            h('div', { className: 'form-group' }, 
+              h('label', null, 'Gare de départ'),
+              h('input', { 
+                type: 'text', 
+                value: searchInput, 
+                placeholder: 'Chercher une ville...', 
+                onChange: e => setSearchInput(e.target.value) 
+              }),
+              suggestions.length > 0 && h('div', { className: 'autocomplete-results' },
+                suggestions.map(s => h('div', { 
+                  key: s.id, 
+                  className: 'autocomplete-item', 
+                  onClick: () => { setSelectedStation(s); setSearchInput(s.name); setSuggestions([]); } 
+                }, s.name))
+              )
+            ),
+            h('div', { className: 'form-group' }, h('label', null, 'Type'), h('div', { className: 'select-wrapper' },
+              h('select', { value: selectedMode, onChange: e => setSelectedMode(e.target.value) },
+                Object.keys(TRANSPORT_MODES).map(m => h('option', { key: m, value: m }, m))
+              )
+            )),
+            h('button', { className: `generate-btn ${loading ? 'loading' : ''}`, onClick: generate, disabled: loading || !selectedStation }, loading ? '' : '🎲 Générer')
           ),
-          h('div',{className:'map-card'},
-            h('div',{className:'map-card-header'},h('span',null,'📍'),h('h3',null,`Autour de ${journey.arrival.name}`)),
-            h('div',{className:'map-container'},h(MapView,{key:'d-'+mapKey,mapKey:'d-'+mapKey,center:[parseFloat(journey.arrival.coord?.lat),parseFloat(journey.arrival.coord?.lon)],markers:[{lat:parseFloat(journey.arrival.coord?.lat),lng:parseFloat(journey.arrival.coord?.lon),label:'Gare',color:'green'},...culturalPlaces.map(p=>({lat:p.lat,lng:p.lon,label:p.name,color:'red'}))],zoom:14}))
+          error && h('div', { className: 'error-message' }, error),
+          loading && h('div', { className: 'loading-overlay' }, h('div', { className: 'loading-train' }, '🚄'), h('p', null, 'Recherche...')),
+          
+          journey && h('div', { className: 'result-section' },
+            h('div', { className: 'journey-header' }, h('span', { className: 'journey-icon' }, '🚂'),
+              h('div', { className: 'journey-info' },
+                h('div', { className: 'journey-route' }, h('span', null, journey.from.name), h('span', { className: 'arrow' }, '→'), h('span', null, journey.to.name)),
+                h('p', null, `Via ${journey.line}`)
+              )
+            ),
+            h('div', { className: 'maps-grid' },
+              h('div', { className: 'map-card' }, h('div', { className: 'map-card-header' }, h('span', null, '🗺️'), h('h3', null, 'Itinéraire')),
+                h('div', { className: 'map-container' }, h(MapView, {
+                  mapKey: 'j-' + journey.to.name, center: [46.6, 2.2],
+                  markers: [{ ...journey.from, color: 'blue', label: journey.from.name }, { ...journey.to, color: 'green', label: journey.to.name }],
+                  polyline: [[journey.from.lat, journey.from.lng], [journey.to.lat, journey.to.lng]]
+                }))
+              ),
+              h('div', { className: 'map-card' }, h('div', { className: 'map-card-header' }, h('span', null, '📍'), h('h3', null, `Autour de ${journey.to.name}`)),
+                h('div', { className: 'map-container' }, h(MapView, {
+                  mapKey: 'p-' + journey.to.name, center: [journey.to.lat, journey.to.lng],
+                  markers: [{ ...journey.to, color: 'green', label: 'Gare' }, ...places.map(p => ({ ...p, color: 'red', label: p.name }))]
+                }))
+              )
+            ),
+            h('div', { className: 'cultural-section' }, h('h3', null, '🏛️ Lieux culturels'),
+              loadingPlaces ? h('div', { className: 'places-loading' }, 'Chargement...') :
+              places.length > 0 ? h('div', { className: 'places-grid' },
+                places.map((p, i) => h('a', { key: i, href: p.url, target: '_blank', className: 'place-card' },
+                  h('span', { className: 'place-icon' }, PLACE_EMOJIS[p.type] || PLACE_EMOJIS.default),
+                  h('div', { className: 'place-info' }, h('h4', null, p.name), h('p', null, TYPE_LABELS[p.type] || TYPE_LABELS.default))
+                ))
+              ) : h('p', { className: 'no-places' }, 'Aucun lieu trouvé')
+            ),
+            h('div', { className: 'booking-section' }, h('div', { className: 'booking-buttons' },
+              h('a', { className: 'booking-btn sncf', href: `https://www.sncf-connect.com/app/home/search?originLabel=${encodeURIComponent(journey.from.name)}&destinationLabel=${encodeURIComponent(journey.to.name)}`, target: '_blank' }, 'SNCF Connect'),
+              h('button', { className: 'booking-btn new-trip', onClick: generate }, '🎲 Relancer')
+            ))
           )
         ),
-        h('div',{className:'cultural-section'},
-          h('h3',null,'🏛️ Lieux culturels à proximité'),
-          loadingPlaces?h('div',{className:'places-loading'},'Recherche...'):
-          culturalPlaces.length>0?h('div',{className:'places-grid'},culturalPlaces.map((p,i)=>h('a',{className:'place-card',key:i, href: p.url, target: '_blank'},h('span',{className:'place-icon'},PLACE_EMOJIS[p.type]||PLACE_EMOJIS.default),h('div',{className:'place-info'},h('h4',null,p.name),h('p',null,TYPE_LABELS[p.type]||TYPE_LABELS.default))))):
-          h('p',{className:'no-places'},'Aucun lieu culturel trouvé')
-        ),
-        h('div',{className:'booking-section'},
-          h('h3',null,'🎫 Réservez votre voyage'),
-          h('div',{className:'booking-buttons'},
-            h('a',{className:'booking-btn sncf',href:`https://www.sncf-connect.com/app/home/search?originLabel=${encodeURIComponent(journey.departure.name)}&destinationLabel=${encodeURIComponent(journey.arrival.name)}`,target:'_blank'},'SNCF Connect'),
-            h('button',{className:'booking-btn new-trip',onClick:generateJourney},'🎲 Nouvelle destination')
-          )
-        )
-      )
-    ),
-    h('footer',{className:'footer'},h('p',null,'Données SNCF & OSM'))
-  );
-}
-ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+        h('footer', { className: 'footer' }, h('p', null, 'Données SNCF & OpenStreetMap'))
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root'))
+  .render(React.createElement(App));
   </script>
 </body>
 </html>
