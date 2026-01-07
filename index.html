@@ -59,7 +59,7 @@
     .cultural-section{background:var(--bg-card);border:1px solid var(--border);border-radius:1rem;padding:1.5rem;margin-bottom:1.5rem}
     .cultural-section h3{font-size:1.25rem;margin-bottom:1rem;display:flex;align-items:center;gap:0.5rem}
     .places-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:1rem}
-    .place-card{background:var(--bg-secondary);border:1px solid var(--border);border-radius:0.75rem;padding:1rem;display:flex;align-items:center;gap:0.75rem;transition:border-color 0.2s,transform 0.2s}
+    .place-card{background:var(--bg-secondary);border:1px solid var(--border);border-radius:0.75rem;padding:1rem;display:flex;align-items:center;gap:0.75rem;transition:border-color 0.2s,transform 0.2s;text-decoration:none;color:inherit;cursor:pointer}
     .place-card:hover{border-color:var(--accent);transform:translateY(-2px)}
     .place-icon{font-size:1.5rem;flex-shrink:0}
     .place-info h4{font-size:0.9rem;font-family:'DM Sans',sans-serif;font-weight:500;margin-bottom:0.25rem}
@@ -94,11 +94,7 @@
   <script>
 const{useState,useEffect,useRef,useCallback}=React;
 
-// ==================== CONFIGURATION ====================
-// Remplace par l'URL de ton Cloudflare Worker
 const API_PROXY_URL='https://soft-cake-00a9.kmdf29dr47.workers.dev';
-// =======================================================
-
 const OVERPASS_API='https://overpass-api.de/api/interpreter';
 const TRANSPORT_MODES={
   'Tous les trains':'all',
@@ -152,7 +148,7 @@ function MapView({center,markers,polyline,zoom=12,mapKey}){
     if(polyline&&polyline.length>=2){L.polyline(polyline,{color:'#00d4aa',weight:3,opacity:0.8,dashArray:'10, 10'}).addTo(map)}
     if(bounds.length>1){map.fitBounds(bounds,{padding:[50,50]})}else if(bounds.length===1){map.setView(bounds[0],zoom)}
     return()=>{if(mapInstanceRef.current){mapInstanceRef.current.remove();mapInstanceRef.current=null}};
-  },[mapKey]);
+  },[mapKey, markers]); // Added markers to dependency
   return React.createElement('div',{ref:mapRef,style:{height:'100%',width:'100%'}});
 }
 
@@ -184,9 +180,19 @@ function App(){
 
   useEffect(()=>{if(isApiConfigured())fetchStations()},[fetchStations]);
 
-  const fetchCulturalPlaces=async(lat,lon)=>{
+  const fetchCulturalPlaces=async(lat,lon, cityName)=>{
     setLoadingPlaces(true);
-    const query=`[out:json][timeout:25];(node["tourism"="museum"](around:2000,${lat},${lon});way["tourism"="museum"](around:2000,${lat},${lon});node["tourism"="art_gallery"](around:2000,${lat},${lon});way["tourism"="art_gallery"](around:2000,${lat},${lon});node["amenity"="theatre"](around:2000,${lat},${lon});way["amenity"="theatre"](around:2000,${lat},${lon});node["historic"="castle"](around:2000,${lat},${lon});way["historic"="castle"](around:2000,${lat},${lon});node["historic"="monument"](around:2000,${lat},${lon});way["historic"="monument"](around:2000,${lat},${lon});node["amenity"="place_of_worship"]["building"="cathedral"](around:2000,${lat},${lon});way["amenity"="place_of_worship"]["building"="cathedral"](around:2000,${lat},${lon}););out center tags;`;
+    // Requête modifiée pour inclure plus de diversité et moins de théâtres
+    const query=`[out:json][timeout:25];(
+      node["tourism"="museum"](around:2500,${lat},${lon});
+      way["tourism"="museum"](around:2500,${lat},${lon});
+      node["historic"="castle"](around:5000,${lat},${lon});
+      way["historic"="castle"](around:5000,${lat},${lon});
+      node["historic"="monument"](around:2500,${lat},${lon});
+      node["tourism"="art_gallery"](around:2500,${lat},${lon});
+      node["amenity"="theatre"](around:1000,${lat},${lon});
+    );out center tags;`;
+    
     try{
       const response=await fetch(OVERPASS_API,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(query)});
       if(!response.ok)throw new Error('Overpass error');
@@ -200,8 +206,11 @@ function App(){
         else if(el.tags.amenity==='theatre')type='theatre';
         else if(el.tags.historic==='castle')type='castle';
         else if(el.tags.historic==='monument')type='monument';
-        else if(el.tags.amenity==='place_of_worship')type='church';
-        return{name:el.tags.name,type,lat:elLat,lon:elLon};
+        
+        // Gérer le lien : site web ou recherche google
+        const website = el.tags.website || el.tags['contact:website'] || `https://www.google.com/search?q=${encodeURIComponent(el.tags.name + ' ' + cityName)}`;
+        
+        return{name:el.tags.name,type,lat:elLat,lon:elLon, url: website};
       }).filter(p=>p.lat&&p.lon).slice(0,12);
       setLoadingPlaces(false);
       return places;
@@ -232,7 +241,7 @@ function App(){
       const journeyData={departure:{name:selectedStation.name,coord:departureCoords||{lat:'48.8566',lon:'2.3522'}},arrival:{name:randomDest.name,coord:randomDest.coord},line:randomDest.line};
       setJourney(journeyData);
       if(randomDest.coord&&randomDest.coord.lat&&randomDest.coord.lon){
-        const places=await fetchCulturalPlaces(parseFloat(randomDest.coord.lat),parseFloat(randomDest.coord.lon));
+        const places=await fetchCulturalPlaces(parseFloat(randomDest.coord.lat),parseFloat(randomDest.coord.lon), randomDest.name);
         setCulturalPlaces(places);
       }
     }catch(err){console.error(err);setError(err.message||'Erreur')}finally{setLoading(false)}
@@ -295,7 +304,7 @@ function App(){
         h('div',{className:'cultural-section'},
           h('h3',null,'🏛️ Lieux culturels à proximité'),
           loadingPlaces?h('div',{className:'places-loading'},'Recherche...'):
-          culturalPlaces.length>0?h('div',{className:'places-grid'},culturalPlaces.map((p,i)=>h('div',{className:'place-card',key:i},h('span',{className:'place-icon'},PLACE_EMOJIS[p.type]||PLACE_EMOJIS.default),h('div',{className:'place-info'},h('h4',null,p.name),h('p',null,TYPE_LABELS[p.type]||TYPE_LABELS.default))))):
+          culturalPlaces.length>0?h('div',{className:'places-grid'},culturalPlaces.map((p,i)=>h('a',{className:'place-card',key:i, href: p.url, target: '_blank'},h('span',{className:'place-icon'},PLACE_EMOJIS[p.type]||PLACE_EMOJIS.default),h('div',{className:'place-info'},h('h4',null,p.name),h('p',null,TYPE_LABELS[p.type]||TYPE_LABELS.default))))):
           h('p',{className:'no-places'},'Aucun lieu culturel trouvé')
         ),
         h('div',{className:'booking-section'},
