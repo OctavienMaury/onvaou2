@@ -432,6 +432,7 @@ function App(){
   };
 
   const mapKey=journey?`${journey.departure.name}-${journey.arrival.name}-${Date.now()}`:'initial';
+  const destMapKey=journey?`dest-${journey.arrival.name}-${culturalPlaces.length}`:'dest-initial';
   const h=React.createElement;
 
   return h('div',{className:'app-container'},
@@ -510,8 +511,8 @@ function App(){
             h('div',{className:'map-card-header'},h('span',null,'📍'),h('h3',null,`Autour de ${journey.arrival.name}`)),
             h('div',{className:'map-container'},
               h(MapView,{
-                key:'dest-'+mapKey,
-                mapKey:'dest-'+mapKey,
+                key:destMapKey,
+                mapKey:destMapKey,
                 center:[parseFloat(journey.arrival.coord?.lat),parseFloat(journey.arrival.coord?.lon)],
                 markers:[
                   {lat:parseFloat(journey.arrival.coord?.lat),lng:parseFloat(journey.arrival.coord?.lon),label:journey.arrival.name+' (Gare)',color:'green'},
