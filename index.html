@@ -96,12 +96,15 @@ const{useState,useEffect,useRef,useCallback}=React;
 
 const API_PROXY_URL='https://soft-cake-00a9.kmdf29dr47.workers.dev';
 const OVERPASS_API='https://overpass-api.de/api/interpreter';
+
+// MAPPING DES MODES - J'ai rendu le filtrage plus strict
 const TRANSPORT_MODES={
   'Tous les trains':'all',
-  'Grande vitesse (TGV, OUIGO, Eurostar, Thalys...)':'physical_mode:LongDistanceTrain',
+  'Grande vitesse (TGV, OUIGO, Eurostar...)':'physical_mode:LongDistanceTrain',
   'TER (régional)':'physical_mode:LocalTrain',
   'Intercités':'physical_mode:LongDistanceTrain'
 };
+
 const PLACE_EMOJIS={museum:'🏛️',theatre:'🎭',art_gallery:'🎨',castle:'🏰',monument:'🗿',church:'⛪',archaeological_site:'🏺',default:'⭐'};
 const TYPE_LABELS={museum:'Musée',theatre:'Théâtre',art_gallery:"Galerie d'art",castle:'Château',monument:'Monument',church:'Église',archaeological_site:'Site archéologique',default:"Lieu d'intérêt"};
 
@@ -148,7 +151,7 @@ function MapView({center,markers,polyline,zoom=12,mapKey}){
     if(polyline&&polyline.length>=2){L.polyline(polyline,{color:'#00d4aa',weight:3,opacity:0.8,dashArray:'10, 10'}).addTo(map)}
     if(bounds.length>1){map.fitBounds(bounds,{padding:[50,50]})}else if(bounds.length===1){map.setView(bounds[0],zoom)}
     return()=>{if(mapInstanceRef.current){mapInstanceRef.current.remove();mapInstanceRef.current=null}};
-  },[mapKey, markers]); // Added markers to dependency
+  },[mapKey, markers]);
   return React.createElement('div',{ref:mapRef,style:{height:'100%',width:'100%'}});
 }
 
@@ -182,7 +185,7 @@ function App(){
 
   const fetchCulturalPlaces=async(lat,lon, cityName)=>{
     setLoadingPlaces(true);
-    // Requête modifiée pour inclure plus de diversité et moins de théâtres
+    // Requête diversifiée avec moins de théâtres
     const query=`[out:json][timeout:25];(
       node["tourism"="museum"](around:2500,${lat},${lon});
       way["tourism"="museum"](around:2500,${lat},${lon});
@@ -190,7 +193,7 @@ function App(){
       way["historic"="castle"](around:5000,${lat},${lon});
       node["historic"="monument"](around:2500,${lat},${lon});
       node["tourism"="art_gallery"](around:2500,${lat},${lon});
-      node["amenity"="theatre"](around:1000,${lat},${lon});
+      node["amenity"="theatre"](around:800,${lat},${lon});
     );out center tags;`;
     
     try{
@@ -207,7 +210,6 @@ function App(){
         else if(el.tags.historic==='castle')type='castle';
         else if(el.tags.historic==='monument')type='monument';
         
-        // Gérer le lien : site web ou recherche google
         const website = el.tags.website || el.tags['contact:website'] || `https://www.google.com/search?q=${encodeURIComponent(el.tags.name + ' ' + cityName)}`;
         
         return{name:el.tags.name,type,lat:elLat,lon:elLon, url: website};
@@ -228,17 +230,40 @@ function App(){
       if(!stopArea)throw new Error('Gare non trouvée');
       const stopAreaId=stopArea.id;
       const departureCoords=stopArea.stop_area?.coord;
+
       let departuresUrl=`${API_PROXY_URL}/departures/${encodeURIComponent(stopAreaId)}`;
-      if(selectedMode!=='Tous les trains'&&TRANSPORT_MODES[selectedMode]&&TRANSPORT_MODES[selectedMode]!=='all')departuresUrl+=`?mode=${encodeURIComponent(TRANSPORT_MODES[selectedMode])}`;
+      if(selectedMode!=='Tous les trains'&&TRANSPORT_MODES[selectedMode]&&TRANSPORT_MODES[selectedMode]!=='all') {
+        departuresUrl+=`?mode=${encodeURIComponent(TRANSPORT_MODES[selectedMode])}`;
+      }
+
       const departuresResponse=await fetch(departuresUrl);
       if(!departuresResponse.ok)throw new Error('Erreur récupération destinations');
       const departuresData=await departuresResponse.json();
       const destinations=departuresData.destinations||[];
-      if(destinations.length===0)throw new Error('Aucune destination trouvée. Essayez un autre mode.');
-      const filteredDestinations=destinations.filter(d=>d.name!==selectedStation.name);
-      if(filteredDestinations.length===0)throw new Error('Aucune destination trouvée');
+      
+      if(destinations.length===0)throw new Error('Aucune destination trouvée.');
+
+      // --- FILTRE DE SÉCURITÉ CONTRE TRANSILIEN/RER ---
+      let filteredDestinations = destinations.filter(d => d.name !== selectedStation.name);
+
+      if (selectedMode.includes('Grande vitesse') || selectedMode === 'Intercités') {
+        filteredDestinations = filteredDestinations.filter(d => {
+          const name = d.line.toUpperCase();
+          // Exclure explicitement les noms de lignes RER et Transilien
+          const isSuburban = name.includes('RER') || 
+                            name.includes('TRANSILIEN') || 
+                            name.includes('LIGNE ') || 
+                            /^[A-Z]$/.test(d.line); // Exclut les lignes nommées juste "A", "L", "N", etc.
+          return !isSuburban;
+        });
+      }
+      // ------------------------------------------------
+
+      if(filteredDestinations.length===0)throw new Error('Aucune destination de ce type trouvée pour cette gare.');
+      
       const randomDest=filteredDestinations[Math.floor(Math.random()*filteredDestinations.length)];
       const journeyData={departure:{name:selectedStation.name,coord:departureCoords||{lat:'48.8566',lon:'2.3522'}},arrival:{name:randomDest.name,coord:randomDest.coord},line:randomDest.line};
+      
       setJourney(journeyData);
       if(randomDest.coord&&randomDest.coord.lat&&randomDest.coord.lon){
         const places=await fetchCulturalPlaces(parseFloat(randomDest.coord.lat),parseFloat(randomDest.coord.lon), randomDest.name);
@@ -261,7 +286,6 @@ function App(){
         h('h1',null,'Où va-t-on ?'),
         h('p',null,'Laissez le hasard décider de votre prochaine escapade en train !')
       ),
-      !isApiConfigured()&&h('div',{className:'config-banner'},'⚠️ Configure ton Worker ! Modifie ',h('code',null,'API_PROXY_URL'),' dans index.html'),
       h('div',{className:'selection-panel'},
         h('div',{className:'form-group'},
           h('label',null,'Gare de départ'),
