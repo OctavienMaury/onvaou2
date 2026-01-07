@@ -84,6 +84,8 @@
     .config-banner code{background:var(--bg-secondary);padding:0.2rem 0.5rem;border-radius:0.25rem;font-size:0.85rem}
     .places-loading{display:flex;align-items:center;justify-content:center;gap:0.5rem;padding:2rem;color:var(--text-secondary)}
     .places-loading::before{content:'';width:16px;height:16px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite}
+    .custom-marker{background:transparent !important;border:none !important}
+    .leaflet-marker-icon{background:transparent !important;border:none !important}
   </style>
 </head>
 <body>
@@ -96,7 +98,7 @@ const{useState,useEffect,useRef,useCallback}=React;
 
 // ==================== CONFIGURATION ====================
 // Remplace par l'URL de ton Cloudflare Worker
-const API_PROXY_URL='https://soft-cake-00a9.kmdf29dr47.workers.dev';
+const API_PROXY_URL='https://soft-cake-00a9.kmdf29dr47.workers.dev/';
 // =======================================================
 
 const OVERPASS_API='https://overpass-api.de/api/interpreter';
@@ -106,8 +108,8 @@ const TRANSPORT_MODES={
   'TER (régional)':'physical_mode:LocalTrain',
   'Intercités':'physical_mode:LongDistanceTrain'
 };
-const PLACE_EMOJIS={museum:'🏛️',theatre:'🎭',art_gallery:'🎨',castle:'🏰',monument:'🗿',church:'⛪',archaeological_site:'🏺',default:'⭐'};
-const TYPE_LABELS={museum:'Musée',theatre:'Théâtre',art_gallery:"Galerie d'art",castle:'Château',monument:'Monument',church:'Église',archaeological_site:'Site archéologique',default:"Lieu d'intérêt"};
+const PLACE_EMOJIS={museum:'🏛️',theatre:'🎭',art_gallery:'🎨',castle:'🏰',monument:'🗿',church:'⛪',attraction:'🎯',archaeological_site:'🏺',default:'⭐'};
+const TYPE_LABELS={museum:'Musée',theatre:'Théâtre',art_gallery:"Galerie d'art",castle:'Château',monument:'Monument',church:'Cathédrale',attraction:'Attraction',archaeological_site:'Site archéologique',default:"Lieu d'intérêt"};
 
 const MAIN_STATIONS=[
   {name:'Paris Gare de Lyon',id:'stop_area:SNCF:87686006'},
@@ -186,23 +188,39 @@ function App(){
 
   const fetchCulturalPlaces=async(lat,lon)=>{
     setLoadingPlaces(true);
-    const query=`[out:json][timeout:25];(node["tourism"="museum"](around:2000,${lat},${lon});way["tourism"="museum"](around:2000,${lat},${lon});node["tourism"="art_gallery"](around:2000,${lat},${lon});way["tourism"="art_gallery"](around:2000,${lat},${lon});node["amenity"="theatre"](around:2000,${lat},${lon});way["amenity"="theatre"](around:2000,${lat},${lon});node["historic"="castle"](around:2000,${lat},${lon});way["historic"="castle"](around:2000,${lat},${lon});node["historic"="monument"](around:2000,${lat},${lon});way["historic"="monument"](around:2000,${lat},${lon});node["amenity"="place_of_worship"]["building"="cathedral"](around:2000,${lat},${lon});way["amenity"="place_of_worship"]["building"="cathedral"](around:2000,${lat},${lon}););out center tags;`;
+    // Requête équilibrée : musées, galeries, châteaux, monuments, 1 cathédrale max
+    const query=`[out:json][timeout:25];(
+      node["tourism"="museum"](around:2000,${lat},${lon});
+      way["tourism"="museum"](around:2000,${lat},${lon});
+      node["tourism"="art_gallery"](around:2000,${lat},${lon});
+      node["historic"="castle"](around:2000,${lat},${lon});
+      way["historic"="castle"](around:2000,${lat},${lon});
+      node["historic"="monument"]["name"](around:2000,${lat},${lon});
+      node["tourism"="attraction"]["name"](around:1500,${lat},${lon});
+      node["amenity"="place_of_worship"]["building"="cathedral"](around:2000,${lat},${lon});
+    );out center tags qt 15;`;
     try{
       const response=await fetch(OVERPASS_API,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(query)});
       if(!response.ok)throw new Error('Overpass error');
       const data=await response.json();
+      // Limiter à 2 par type pour plus de variété
+      const typeCounts={};
       const places=data.elements.filter(el=>el.tags&&el.tags.name).map(el=>{
         const elLat=el.lat||(el.center&&el.center.lat);
         const elLon=el.lon||(el.center&&el.center.lon);
         let type='default';
         if(el.tags.tourism==='museum')type='museum';
         else if(el.tags.tourism==='art_gallery')type='art_gallery';
-        else if(el.tags.amenity==='theatre')type='theatre';
+        else if(el.tags.tourism==='attraction')type='attraction';
         else if(el.tags.historic==='castle')type='castle';
         else if(el.tags.historic==='monument')type='monument';
         else if(el.tags.amenity==='place_of_worship')type='church';
         return{name:el.tags.name,type,lat:elLat,lon:elLon};
-      }).filter(p=>p.lat&&p.lon).slice(0,12);
+      }).filter(p=>{
+        if(!p.lat||!p.lon)return false;
+        typeCounts[p.type]=(typeCounts[p.type]||0)+1;
+        return typeCounts[p.type]<=3; // Max 3 par type
+      }).slice(0,10);
       setLoadingPlaces(false);
       return places;
     }catch(err){console.error(err);setLoadingPlaces(false);return[]}
