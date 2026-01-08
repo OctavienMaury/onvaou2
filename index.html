@@ -328,19 +328,19 @@ function App() {
 
   useEffect(() => {if (isApiConfigured()) fetchStations()}, [fetchStations]);
 
-  // Chercher les lieux culturels avec fallback progressif
+  // Chercher les lieux culturels avec fallback progressif et timeout robuste
   const fetchCulturalPlaces = async (lat, lon) => {
     setLoadingPlaces(true);
     console.log('🏛️ Recherche lieux culturels pour:', lat, lon);
     
     // Essayer avec des rayons de plus en plus grands
-    const radii = [2000, 5000, 10000]; // 2km, 5km, 10km
+    const radii = [2000, 5000, 10000, 20000]; // 2km, 5km, 10km, 20km
     
     for (const radius of radii) {
       console.log(`🔍 Tentative avec rayon ${radius}m...`);
       
       // Requête élargie incluant plus de types
-      const query = `[out:json][timeout:15];
+      const query = `[out:json][timeout:12];
       (
         node["tourism"="museum"](around:${radius},${lat},${lon});
         way["tourism"="museum"](around:${radius},${lat},${lon});
@@ -348,19 +348,22 @@ function App() {
         way["amenity"="theatre"](around:${radius},${lat},${lon});
         node["historic"="castle"](around:${radius},${lat},${lon});
         way["historic"="castle"](around:${radius},${lat},${lon});
-        node["tourism"="attraction"](around:${radius},${lat},${lon});
+        node["tourism"="attraction"]["name"](around:${radius},${lat},${lon});
         node["tourism"="gallery"](around:${radius},${lat},${lon});
         node["amenity"="arts_centre"](around:${radius},${lat},${lon});
-        node["historic"="monument"](around:${radius},${lat},${lon});
+        node["historic"="monument"]["name"](around:${radius},${lat},${lon});
       );
-      out center;`;
+      out center 30;`;
       
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 18000);
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s max
         
         const response = await fetch(OVERPASS_API, {
           method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
           body: 'data=' + encodeURIComponent(query),
           signal: controller.signal
         });
@@ -368,17 +371,31 @@ function App() {
         clearTimeout(timeoutId);
         
         if (!response.ok) {
-          console.warn(`⚠️ Overpass erreur ${response.status}, rayon ${radius}m`);
+          console.warn(`⚠️ Overpass HTTP ${response.status} pour rayon ${radius}m`);
+          
+          // Si timeout Overpass (code 429 ou 504), attendre et continuer
+          if (response.status === 429 || response.status === 504) {
+            console.log('⏳ Overpass surchargé, attente 2s...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            continue;
+          }
+          
+          // Pour d'autres erreurs, essayer le rayon suivant
           continue;
         }
         
         const data = await response.json();
         console.log(`📦 Trouvé ${data.elements?.length || 0} éléments bruts (rayon ${radius}m)`);
         
+        if (!data.elements || data.elements.length === 0) {
+          console.log(`⚠️ Aucun résultat pour rayon ${radius}m, passage au suivant`);
+          continue;
+        }
+        
         const places = [];
         const seen = new Set(); // Éviter les doublons
         
-        for (const el of data.elements || []) {
+        for (const el of data.elements) {
           if (!el.tags || !el.tags.name) continue;
           
           // Coordonnées
@@ -432,7 +449,7 @@ function App() {
           if (places.length >= 12) break;
         }
         
-        console.log(`✨ ${places.length} lieux uniques trouvés`);
+        console.log(`✨ ${places.length} lieux uniques trouvés avec rayon ${radius}m`);
         
         // Si on a trouvé des résultats, on s'arrête
         if (places.length > 0) {
@@ -440,14 +457,24 @@ function App() {
           return places;
         }
         
+        console.log(`⚠️ ${places.length} lieux après filtrage, tentative rayon suivant...`);
+        
       } catch (err) {
-        console.warn(`⚠️ Erreur rayon ${radius}m:`, err.message);
+        if (err.name === 'AbortError') {
+          console.warn(`⏱️ Timeout rayon ${radius}m, tentative suivante`);
+        } else {
+          console.warn(`⚠️ Erreur rayon ${radius}m:`, err.message);
+        }
+        
+        // Attendre un peu avant de réessayer
+        await new Promise(resolve => setTimeout(resolve, 1000));
         continue;
       }
     }
     
     // Aucun résultat après tous les essais
     console.log('❌ Aucun lieu culturel trouvé après toutes les tentatives');
+    console.log('ℹ️ Cela peut arriver pour les petites villes ou en cas de surcharge d\'Overpass');
     setLoadingPlaces(false);
     return [];
   };
